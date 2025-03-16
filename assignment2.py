@@ -8,10 +8,8 @@ from sklearn.metrics import accuracy_score
 from sklearn.preprocessing import LabelEncoder
 import joblib
 
-# Load training data
 data = pd.read_csv("https://github.com/dustywhite7/Econ8310/raw/master/AssignmentData/assignment3.csv")
 
-# Drop missing values
 data = data.dropna()
 
 # Remove unnecessary columns
