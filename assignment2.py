@@ -1,84 +1,45 @@
 import pandas as pd
 import numpy as np
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.ensemble import RandomForestClassifier
-from xgboost import XGBClassifier
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, KFold, GridSearchCV
 from sklearn.metrics import accuracy_score
-from sklearn.preprocessing import LabelEncoder
+from sklearn.ensemble import RandomForestClassifier, StackingClassifier
+from sklearn.tree import DecisionTreeClassifier
+from xgboost import XGBClassifier
 import joblib
 
-data = pd.read_csv("https://github.com/dustywhite7/Econ8310/raw/master/AssignmentData/assignment3.csv")
+# Load training data
+train_url = "https://github.com/dustywhite7/Econ8310/raw/master/AssignmentData/assignment3.csv"
+data = pd.read_csv(train_url)
 
-data = data.dropna()
-
-# Remove unnecessary columns
-if 'id' in data.columns:
-    data = data.drop(columns=['id'])
-if 'DateTime' in data.columns:
-    data = data.drop(columns=['DateTime'])
-
-# Identify categorical columns and encode them
-categorical_cols = data.select_dtypes(include=['object']).columns
-label_encoders = {}
-
-for col in categorical_cols:
-    le = LabelEncoder()
-    data[col] = le.fit_transform(data[col])
-    label_encoders[col] = le  # Store encoders for test data
-
-# Define target and features
+# Define target variable and features
 y = data['meal']
-X = data.drop(columns=['meal'])
+X = data.drop(columns=['meal', 'id', 'DateTime'])  # Remove non-numeric columns
+X = pd.get_dummies(X, drop_first=True)  # Convert categorical features if any
 
-# Split data into training and testing sets
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+# Split dataset into training and testing sets
+x, xt, y, yt = train_test_split(X, y, test_size=0.1, random_state=42)
 
-# Decision Tree Model
-dt_model = DecisionTreeClassifier(max_depth=5)
-dt_model.fit(X_train, y_train)
-dt_pred = dt_model.predict(X_test)
-dt_acc = accuracy_score(y_test, dt_pred)
-print("Decision Tree Accuracy:", dt_acc)
+# Define the best-performing model
+model = XGBClassifier(n_estimators=100, max_depth=8, learning_rate=0.2, random_state=42, objective='binary:logistic')
 
-# Random Forest Model
-rf_model = RandomForestClassifier(n_estimators=100, max_depth=5, n_jobs=-1)
-rf_model.fit(X_train, y_train)
-rf_pred = rf_model.predict(X_test)
-rf_acc = accuracy_score(y_test, rf_pred)
-print("Random Forest Accuracy:", rf_acc)
+# Train the model
+modelFit = model.fit(x, y)
 
-# Boosted Tree Model
-xgb_model = XGBClassifier(n_estimators=50, max_depth=3, learning_rate=0.5)
-xgb_model.fit(X_train, y_train)
-xgb_pred = xgb_model.predict(X_test)
-xgb_acc = accuracy_score(y_test, xgb_pred)
-print("XGBoost Accuracy:", xgb_acc)
+# Load test data
+test_url = "https://github.com/dustywhite7/Econ8310/raw/master/AssignmentData/assignment3test.csv"
+test_data = pd.read_csv(test_url)
+test_data = test_data.drop(columns=['id', 'DateTime'])  # Drop non-numeric columns
+test_data = pd.get_dummies(test_data, drop_first=True)
+test_data = test_data.reindex(columns=X.columns, fill_value=0)  # Ensure same columns
 
-# Load test data for final predictions
-test_data = pd.read_csv("https://github.com/dustywhite7/Econ8310/raw/master/AssignmentData/assignment3test.csv")
+# Make predictions using the trained model
+pred = modelFit.predict(test_data)
+pred = [int(p) for p in pred]  # Convert to required format
 
-# Drop unnecessary columns from test data
-if 'id' in test_data.columns:
-    test_data = test_data.drop(columns=['id'])
-if 'DateTime' in test_data.columns:
-    test_data = test_data.drop(columns=['DateTime'])
+# Save predictions
+pd.DataFrame(pred, columns=["meal_prediction"]).to_csv("predictions.csv", index=False)
 
-# Apply encoding to test data safely
-for col in categorical_cols:
-    if col in test_data.columns:
-        test_data[col] = test_data[col].map(lambda s: label_encoders[col].classes_.tolist().index(s) if s in label_encoders[col].classes_ else -1)
+# Save the trained model
+joblib.dump(modelFit, "modelFit.pkl")
 
-# Ensure test data columns match training data
-test_data = test_data[X.columns]  # Reorder columns to match training data
-
-# Choose best model based on highest accuracy
-best_model = max([(dt_model, dt_acc), (rf_model, rf_acc), (xgb_model, xgb_acc)], key=lambda x: x[1])[0]
-pred = best_model.predict(test_data)
-
-# Convert predictions to binary format (1 or 0)
-pred = [int(p) for p in pred]
-
-# Save the model and predictions
-joblib.dump(best_model, 'modelFit.pkl')  # Save best model
-pd.DataFrame(pred, columns=['meal_prediction']).to_csv('predictions.csv', index=False)
+print("Best model selected and predictions are saved successfully.")
